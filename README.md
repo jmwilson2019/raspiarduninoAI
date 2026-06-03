@@ -12,6 +12,28 @@ pip install -r requirements.txt
 
 This library provides a policy-based control system for managing a hopper gate valve based on sensor inputs (ultrasonic distance, dust detection, PIR motion).
 
+### Holographic GUI
+
+Launch the holographic GUI interface for real-time monitoring and control:
+
+```bash
+python gui.py
+```
+
+**Features:**
+- 🌟 Futuristic holographic design with neon cyan/purple theme
+- 📊 Real-time sensor monitoring with animated circular gauges
+- 🎮 Manual control interface for gate operations
+- 🚨 Live alert notifications and system status
+- 📝 Real-time system log with color-coded messages
+- ⚡ Smooth animations and visual effects
+
+The GUI provides:
+- **Sensor Telemetry Panel**: Live gauges showing material level and gate status
+- **System Status Panel**: Detailed sensor readings and active alerts
+- **Manual Controls Panel**: Buttons to open/close gate and simulate sensor events
+- **System Log**: Real-time logging of all system events
+
 ### Basic Example
 
 ```python
@@ -69,7 +91,14 @@ For more examples, see `example.py`.
 ## Running Tests
 
 ```bash
+# Run all tests
+pytest test_state.py test_policies.py test_core.py test_gui.py -v
+
+# Run tests without GUI tests (if display not available)
 pytest test_state.py test_policies.py test_core.py -v
+
+# Run with coverage
+pytest -v --cov=. --cov-report=term-missing
 ```
 
 ## Architecture
@@ -77,6 +106,7 @@ pytest test_state.py test_policies.py test_core.py -v
 - **`state.py`**: Manages sensor state and data validation
 - **`policies.py`**: Policy engine that evaluates sensor state and makes decisions
 - **`core.py`**: Core controller that coordinates state, policy, and hardware interfaces
+- **`gui.py`**: Holographic GUI for real-time monitoring and control
 
 ## Wiring
 
