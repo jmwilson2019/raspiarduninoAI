@@ -20,7 +20,8 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QGroupBox, QGridLayout, QTextEdit, QFrame
+    QLabel, QPushButton, QGroupBox, QGridLayout, QTextEdit, QFrame,
+    QMenuBar, QMenu, QAction, QMessageBox, QInputDialog, QLineEdit
 )
 from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QPalette, QColor, QFont
@@ -30,6 +31,7 @@ import pyqtgraph as pg
 from core import HopperCore, HardwareProtocol, build_default_core
 from state import HopperState
 from policies import PolicyConfig, PolicyEngine
+from config import ConfigManager, SystemConfig
 
 
 # Holographic color scheme
@@ -255,8 +257,13 @@ class HolographicGUI(QMainWindow):
 
         self.core = build_default_core(hardware=self.hardware, logger=self._log_from_core)
 
+        # Configuration manager
+        self.config_manager = ConfigManager()
+        self.system_config = self.config_manager.load()
+
         # Setup UI
         self._setup_ui()
+        self._create_menu_bar()
         self._apply_holographic_style()
 
         # Start update timer
@@ -304,6 +311,202 @@ class HolographicGUI(QMainWindow):
         main_layout.addWidget(log_panel)
 
         central_widget.setLayout(main_layout)
+
+    def _create_menu_bar(self):
+        """Create menu bar with File, Settings, and Help menus."""
+        menubar = self.menuBar()
+        menubar.setStyleSheet(f"""
+            QMenuBar {{
+                background: {HOLO_BG};
+                color: {HOLO_CYAN};
+                border-bottom: 2px solid {HOLO_CYAN};
+            }}
+            QMenuBar::item:selected {{
+                background: rgba(0, 255, 255, 0.2);
+            }}
+            QMenu {{
+                background: {HOLO_PANEL};
+                color: {HOLO_TEXT};
+                border: 2px solid {HOLO_CYAN};
+            }}
+            QMenu::item:selected {{
+                background: rgba(0, 255, 255, 0.2);
+            }}
+        """)
+
+        # File menu
+        file_menu = menubar.addMenu("&File")
+
+        export_action = QAction("&Export Configuration...", self)
+        export_action.triggered.connect(self._export_config)
+        file_menu.addAction(export_action)
+
+        import_action = QAction("&Import Configuration...", self)
+        import_action.triggered.connect(self._import_config)
+        file_menu.addAction(import_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("E&xit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Settings menu
+        settings_menu = menubar.addMenu("&Settings")
+
+        wizard_action = QAction("Setup &Wizard...", self)
+        wizard_action.triggered.connect(self._show_setup_wizard)
+        settings_menu.addAction(wizard_action)
+
+        advanced_action = QAction("&Advanced Settings...", self)
+        advanced_action.triggered.connect(self._show_advanced_settings)
+        settings_menu.addAction(advanced_action)
+
+        settings_menu.addSeparator()
+
+        reset_action = QAction("&Reset to Defaults", self)
+        reset_action.triggered.connect(self._reset_config)
+        settings_menu.addAction(reset_action)
+
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+
+        about_action = QAction("&About", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
+        docs_action = QAction("&Documentation", self)
+        docs_action.triggered.connect(self._show_docs)
+        help_menu.addAction(docs_action)
+
+    def _show_setup_wizard(self):
+        """Show the setup wizard dialog."""
+        try:
+            from setup_wizard import SetupWizard
+
+            wizard = SetupWizard(self)
+            wizard.config_complete.connect(self._on_wizard_complete)
+            wizard.exec_()
+        except ImportError as e:
+            self.log_message(f"[ERROR] Cannot load setup wizard: {e}", "red")
+            QMessageBox.critical(self, "Error", f"Cannot load setup wizard:\n{e}")
+
+    def _on_wizard_complete(self, config: SystemConfig):
+        """Handle wizard completion."""
+        self.system_config = config
+        self.config_manager.save(config)
+        self.log_message("[CONFIG] Configuration saved from wizard", "green")
+        QMessageBox.information(
+            self, "Configuration Saved",
+            "Your configuration has been saved successfully!"
+        )
+
+    def _show_advanced_settings(self):
+        """Show advanced settings dialog (password protected)."""
+        if self.system_config.require_password_for_advanced and self.system_config.password_hash:
+            password, ok = QInputDialog.getText(
+                self, "Master Password Required",
+                "Enter master password to access advanced settings:",
+                QLineEdit.Password
+            )
+            if not ok:
+                return
+            if not self.system_config.check_password(password):
+                QMessageBox.warning(self, "Access Denied", "Incorrect password!")
+                self.log_message("[SECURITY] Failed advanced settings access attempt", "red")
+                return
+
+        self.log_message("[CONFIG] Opening advanced settings", "cyan")
+        # TODO: Implement advanced settings dialog
+        QMessageBox.information(
+            self, "Advanced Settings",
+            "Advanced Settings dialog will be implemented here.\n\n"
+            "This will include:\n"
+            "• Motor step configuration\n"
+            "• UI customization\n"
+            "• Camera-style menu navigation\n"
+            "• Power monitoring settings"
+        )
+
+    def _export_config(self):
+        """Export configuration to file."""
+        from PyQt5.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Configuration",
+            "config_backup.json",
+            "JSON Files (*.json)"
+        )
+        if filename:
+            from pathlib import Path
+            if self.config_manager.export_config(Path(filename)):
+                self.log_message(f"[CONFIG] Exported to {filename}", "green")
+                QMessageBox.information(self, "Success", "Configuration exported successfully!")
+            else:
+                self.log_message(f"[CONFIG] Export failed", "red")
+                QMessageBox.critical(self, "Error", "Failed to export configuration!")
+
+    def _import_config(self):
+        """Import configuration from file."""
+        from PyQt5.QtWidgets import QFileDialog
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import Configuration",
+            "",
+            "JSON Files (*.json)"
+        )
+        if filename:
+            from pathlib import Path
+            config = self.config_manager.import_config(Path(filename))
+            if config:
+                self.system_config = config
+                self.log_message(f"[CONFIG] Imported from {filename}", "green")
+                QMessageBox.information(self, "Success", "Configuration imported successfully!")
+            else:
+                self.log_message(f"[CONFIG] Import failed", "red")
+                QMessageBox.critical(self, "Error", "Failed to import configuration!")
+
+    def _reset_config(self):
+        """Reset configuration to defaults."""
+        reply = QMessageBox.question(
+            self, "Reset Configuration",
+            "Are you sure you want to reset all settings to defaults?\n\n"
+            "This cannot be undone!",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.config_manager.reset_to_defaults()
+            self.system_config = self.config_manager.config
+            self.config_manager.save()
+            self.log_message("[CONFIG] Reset to defaults", "cyan")
+            QMessageBox.information(self, "Reset Complete", "Configuration reset to defaults!")
+
+    def _show_about(self):
+        """Show about dialog."""
+        QMessageBox.about(
+            self, "About raspiarduninoAI",
+            "<h2>raspiarduninoAI</h2>"
+            "<p>Hopper gate valve + telescope control integration</p>"
+            "<p>With holographic GUI interface</p>"
+            "<p><b>Features:</b></p>"
+            "<ul>"
+            "<li>Real-time sensor monitoring</li>"
+            "<li>4x NEMA 17 motor control</li>"
+            "<li>Policy-based automation</li>"
+            "<li>Hardware auto-detection</li>"
+            "</ul>"
+            "<p>Version 1.0.0</p>"
+        )
+
+    def _show_docs(self):
+        """Show documentation."""
+        QMessageBox.information(
+            self, "Documentation",
+            "Documentation files:\n\n"
+            "• README.md - Quick start guide\n"
+            "• HARDWARE_SETUP.md - Hardware configuration\n"
+            "• GUI_IMPLEMENTATION.md - GUI details\n\n"
+            "Check the repository for detailed documentation."
+        )
 
     def _create_header(self) -> QWidget:
         """Create the header with title and system status."""
