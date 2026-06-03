@@ -220,6 +220,35 @@ Telescope board wiring is unchanged from the existing 4-motor telescope setup.
 - Keep high-current pump relay wiring isolated from low-voltage sensor leads.
 - Verify HC-SR04 orientation and stable 5V supply before trusting distance data.
 
+## Cockpit GUI
+
+A holographic HUD-style control surface for the rig lives in
+[`run_seraphina_gui.py`](run_seraphina_gui.py). It reuses the existing
+`state.py` / `policies.py` / `core.py` modules to parse the gate board's JSON
+sensor stream and exposes:
+
+- Always-on cockpit gauge cluster (hopper level, valve % open, annunciator
+  lamps for gate, pump, dust and flow, and the current policy decision).
+- Manual controls for the gate presets (sent as `OPEN <steps>` per the
+  firmware contract), the pump relay (`PUMP ON` / `PUMP OFF`), and the
+  telescope.
+- A **Seraphina AGI** chat panel that prefers the `seraphina` Python API and
+  falls back to the installed `seraphina` CLI when no Python entry point is
+  exposed.
+
+### Run
+
+```bash
+pip install -r requirements.txt
+python run_seraphina_gui.py
+```
+
+The script assumes the gate board is on `/dev/ttyACM0` and the telescope
+board on `/dev/ttyACM1` at 115200 baud (the values defined at the top of the
+file - adjust there if your wiring differs). Hardware and Seraphina
+integrations all degrade gracefully when their backends are missing so the
+HUD can be launched on a bare workstation for layout work.
+
 ## First Power-On Verification
 
 1. Flash the gate-board firmware.
