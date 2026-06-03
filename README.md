@@ -1,12 +1,35 @@
 # raspiarduninoAI
 
-Hopper gate valve + telescope control integration.
+Hopper gate valve + telescope control integration with holographic GUI.
 
 ## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
+
+## Quick Start
+
+### Mock Hardware Mode (Testing)
+
+```bash
+python gui.py
+```
+
+### Real Hardware Mode (Production)
+
+```bash
+# Auto-detect Arduino boards
+python gui.py --real-hardware
+
+# Specify ports manually
+python gui.py --real-hardware --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
+
+# List available ports
+python gui.py --list-ports
+```
+
+**For detailed hardware setup instructions, see [HARDWARE_SETUP.md](HARDWARE_SETUP.md)**
 
 ## Usage
 
