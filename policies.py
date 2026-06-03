@@ -57,12 +57,22 @@ class PolicyEngine:
             if state.gate_open:
                 gate_command = "CLOSE"
 
-        alert = None
-        if reasons:
-            alert = " | ".join(dict.fromkeys(reasons))
+        unique_reasons = self._ordered_unique(reasons)
+        alert = " | ".join(unique_reasons) if unique_reasons else None
 
         return PolicyDecision(
             gate_command=gate_command,
             alert=alert,
-            reasons=tuple(dict.fromkeys(reasons)),
+            reasons=unique_reasons,
         )
+
+    @staticmethod
+    def _ordered_unique(values: List[str]) -> Tuple[str, ...]:
+        seen = set()
+        ordered: List[str] = []
+        for value in values:
+            if value in seen:
+                continue
+            seen.add(value)
+            ordered.append(value)
+        return tuple(ordered)

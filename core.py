@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import monotonic
-from typing import Any, Callable, Mapping, Optional, Protocol
+from typing import Any, Callable, Dict, Mapping, Optional, Protocol
 
 from policies import PolicyDecision, PolicyEngine
 from state import StateStore
+
+CACHE_RETENTION_MULTIPLIER = 10
+MIN_CACHE_RETENTION_S = 5.0
 
 
 class HardwareProtocol(Protocol):
@@ -35,7 +38,7 @@ class HopperCore:
         self.policy_engine = policy_engine or PolicyEngine()
         self.config = config or CoreConfig()
         self.logger = logger or (lambda _: None)
-        self._last_sent_at: dict[str, float] = {}
+        self._last_sent_at: Dict[str, float] = {}
 
     def on_sensor_payload(self, payload: Mapping[str, Any]) -> PolicyDecision:
         state = self.state_store.update_from_payload(payload)
@@ -64,6 +67,7 @@ class HopperCore:
             self.logger(f"policy alert: {decision.alert}")
 
     def _can_send(self, channel: str, command: str) -> bool:
+        self._prune_command_cache()
         key = f"{channel}:{command}"
         last_sent = self._last_sent_at.get(key)
         if last_sent is None:
@@ -71,8 +75,21 @@ class HopperCore:
         return (monotonic() - last_sent) >= self.config.command_cooldown_s
 
     def _mark_sent(self, channel: str, command: str) -> None:
+        self._prune_command_cache()
         key = f"{channel}:{command}"
         self._last_sent_at[key] = monotonic()
+
+    def _prune_command_cache(self) -> None:
+        now = monotonic()
+        max_age = max(
+            self.config.command_cooldown_s * CACHE_RETENTION_MULTIPLIER,
+            MIN_CACHE_RETENTION_S,
+        )
+        self._last_sent_at = {
+            key: sent_at
+            for key, sent_at in self._last_sent_at.items()
+            if (now - sent_at) <= max_age
+        }
 
 
 def build_default_core(

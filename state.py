@@ -9,8 +9,11 @@ from typing import Any, Mapping, Optional
 def _coerce_bool(value: Any, default: bool = False) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
-        return bool(value)
+    if isinstance(value, int):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
     if isinstance(value, str):
         normalized = value.strip().lower()
         if normalized in {"1", "true", "yes", "on"}:
@@ -40,9 +43,8 @@ class HopperState:
     received_monotonic: float = field(default_factory=monotonic)
     raw_payload: Mapping[str, Any] = field(default_factory=dict)
 
-    def data_age_seconds(self, now: Optional[float] = None) -> float:
-        current = monotonic() if now is None else now
-        return max(0.0, current - self.received_monotonic)
+    def data_age_seconds(self) -> float:
+        return max(0.0, monotonic() - self.received_monotonic)
 
     def is_stale(self, stale_after_s: float = 3.0) -> bool:
         return self.data_age_seconds() > stale_after_s
@@ -55,35 +57,28 @@ class StateStore:
 
     def update_from_payload(self, payload: Mapping[str, Any]) -> HopperState:
         sensors = payload.get("sensors", {}) if isinstance(payload, Mapping) else {}
+        sensors_map = sensors if isinstance(sensors, Mapping) else {}
         prior = self.snapshot()
 
         next_state = HopperState(
             board_id=str(payload.get("board_id", prior.board_id)) if isinstance(payload, Mapping) else prior.board_id,
             timestamp_ms=_coerce_int(payload.get("timestamp"), prior.timestamp_ms) if isinstance(payload, Mapping) else prior.timestamp_ms,
             ultrasonic_mm=_coerce_int(
-                sensors.get("ultrasonic_mm"),
+                sensors_map.get("ultrasonic_mm"),
                 prior.ultrasonic_mm,
-            )
-            if isinstance(sensors, Mapping)
-            else prior.ultrasonic_mm,
+            ),
             dust_detected=_coerce_bool(
-                sensors.get("dust"),
+                sensors_map.get("dust"),
                 prior.dust_detected,
-            )
-            if isinstance(sensors, Mapping)
-            else prior.dust_detected,
+            ),
             pir_motion=_coerce_bool(
-                sensors.get("pir_motion"),
+                sensors_map.get("pir_motion"),
                 prior.pir_motion,
-            )
-            if isinstance(sensors, Mapping)
-            else prior.pir_motion,
+            ),
             gate_open=_coerce_bool(
-                sensors.get("gate_open"),
+                sensors_map.get("gate_open"),
                 prior.gate_open,
-            )
-            if isinstance(sensors, Mapping)
-            else prior.gate_open,
+            ),
             received_monotonic=monotonic(),
             raw_payload=dict(payload) if isinstance(payload, Mapping) else {},
         )
