@@ -195,39 +195,63 @@ class HolographicGauge(QWidget):
 class HolographicGUI(QMainWindow):
     """Main holographic GUI window."""
 
-    def __init__(self, use_real_hardware: bool = False, gate_port: str = "/dev/ttyUSB0",
-                 tele_port: Optional[str] = None):
+    def __init__(self, use_real_hardware: bool = True, gate_port: Optional[str] = None,
+                 tele_port: Optional[str] = None, force_mock: bool = False):
         super().__init__()
         self.setWindowTitle("raspiarduninoAI - Holographic Control System")
         self.setGeometry(100, 100, 1200, 800)
 
         # Initialize hardware and core
-        self.use_real_hardware = use_real_hardware
+        self.use_real_hardware = False  # Will be set to True if hardware connects
 
-        if use_real_hardware:
+        # Force mock mode if requested (for testing)
+        if force_mock:
+            self.hardware = MockHardwareGUI(self)
+            self.log_message("[HARDWARE] Mock mode forced (simulation only)", "cyan")
+        elif use_real_hardware:
             try:
                 from hardware import SerialHardware
+
+                # Auto-detect ports if not specified
+                if gate_port is None:
+                    detected_ports = SerialHardware.auto_detect_boards()
+                    if detected_ports:
+                        gate_port = detected_ports[0]
+                        if len(detected_ports) > 1:
+                            tele_port = detected_ports[1]
+                        self.log_message(f"[HARDWARE] Auto-detected ports: {detected_ports}", "cyan")
+                    else:
+                        self.log_message("[HARDWARE] No Arduino boards detected", "red")
+                        gate_port = "/dev/ttyUSB0"  # Default fallback
+
                 self.hardware = SerialHardware(
                     gate_port=gate_port,
                     tele_port=tele_port,
                     logger=self.log_message,
                     sensor_callback=self._handle_real_sensor_data
                 )
+
                 # Try to connect
+                self.log_message(f"[HARDWARE] Attempting connection to {gate_port}...", "cyan")
                 if self.hardware.connect(start_reading=True):
-                    self.log_message("[HARDWARE] Connected to real hardware", "green")
+                    self.log_message("[HARDWARE] ✓ Connected to real hardware", "green")
+                    self.use_real_hardware = True
                 else:
-                    self.log_message("[HARDWARE] Failed to connect, using mock hardware", "red")
+                    self.log_message("[HARDWARE] ✗ Failed to connect, using simulation mode", "red")
                     self.hardware = MockHardwareGUI(self)
-                    self.use_real_hardware = False
+
             except ImportError as e:
                 self.log_message(f"[HARDWARE] Cannot import hardware module: {e}", "red")
-                self.log_message("[HARDWARE] Using mock hardware", "cyan")
+                self.log_message("[HARDWARE] Install pyserial: pip install pyserial", "cyan")
+                self.log_message("[HARDWARE] Using simulation mode", "cyan")
                 self.hardware = MockHardwareGUI(self)
-                self.use_real_hardware = False
+            except Exception as e:
+                self.log_message(f"[HARDWARE] Error initializing hardware: {e}", "red")
+                self.log_message("[HARDWARE] Using simulation mode", "cyan")
+                self.hardware = MockHardwareGUI(self)
         else:
             self.hardware = MockHardwareGUI(self)
-            self.log_message("[HARDWARE] Using mock hardware (simulation mode)", "cyan")
+            self.log_message("[HARDWARE] Simulation mode", "cyan")
 
         self.core = build_default_core(hardware=self.hardware, logger=self._log_from_core)
 
@@ -669,13 +693,15 @@ def main():
     """Main entry point for the holographic GUI."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Holographic GUI for raspiarduninoAI")
-    parser.add_argument('--real-hardware', action='store_true',
-                       help='Use real hardware instead of mock (default: mock)')
-    parser.add_argument('--gate-port', default='/dev/ttyUSB0',
-                       help='Serial port for gate board (default: /dev/ttyUSB0)')
+    parser = argparse.ArgumentParser(
+        description="Holographic GUI for raspiarduninoAI - Auto-detects Arduino boards by default"
+    )
+    parser.add_argument('--mock', '--simulation', action='store_true',
+                       help='Force simulation mode (no hardware, for testing)')
+    parser.add_argument('--gate-port', default=None,
+                       help='Serial port for gate board (auto-detected if not specified)')
     parser.add_argument('--tele-port', default=None,
-                       help='Serial port for telescope board (optional)')
+                       help='Serial port for telescope board (auto-detected if not specified)')
     parser.add_argument('--list-ports', action='store_true',
                        help='List available serial ports and exit')
 
@@ -686,20 +712,28 @@ def main():
         try:
             from hardware import SerialHardware
             ports = SerialHardware.list_serial_ports()
-            print("Available serial ports:")
+            print("\n=== Serial Port Detection ===")
+            print("\nAll available serial ports:")
             for port in ports:
-                print(f"  {port}")
+                print(f"  • {port}")
             detected = SerialHardware.auto_detect_boards()
             if detected:
-                print("\nLikely Arduino boards:")
-                for port in detected:
-                    print(f"  {port}")
+                print("\n✓ Likely Arduino/MKS boards detected:")
+                for i, port in enumerate(detected, 1):
+                    print(f"  {i}. {port}")
+            else:
+                print("\n✗ No Arduino boards auto-detected")
+            print()
         except ImportError:
-            print("Error: pyserial not installed. Install with: pip install pyserial")
+            print("Error: pyserial not installed")
+            print("Install with: pip install pyserial")
         return
 
-    # Check for environment variable
-    use_real = args.real_hardware or os.environ.get('RASPI_USE_REAL_HARDWARE', '').lower() == 'true'
+    # Check for environment variable to force mock mode
+    force_mock = args.mock or os.environ.get('RASPI_FORCE_MOCK', '').lower() == 'true'
+
+    # Default behavior: try real hardware with auto-detection
+    use_real = not force_mock
 
     app = QApplication(sys.argv)
 
@@ -708,10 +742,20 @@ def main():
     app.setFont(font)
 
     # Create and show the GUI
+    print("\n" + "="*60)
+    print("  raspiarduninoAI - Holographic Control System")
+    print("="*60)
+    if force_mock:
+        print("Mode: Simulation (mock hardware)")
+    else:
+        print("Mode: Auto-detecting Arduino boards...")
+    print("="*60 + "\n")
+
     gui = HolographicGUI(
         use_real_hardware=use_real,
         gate_port=args.gate_port,
-        tele_port=args.tele_port
+        tele_port=args.tele_port,
+        force_mock=force_mock
     )
     gui.show()
 

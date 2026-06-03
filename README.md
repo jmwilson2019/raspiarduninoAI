@@ -2,6 +2,8 @@
 
 Hopper gate valve + telescope control integration with holographic GUI.
 
+**Auto-detects and connects to Arduino/MKS Gen 1.4 boards by default!**
+
 ## Installation
 
 ```bash
@@ -10,23 +12,46 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### Mock Hardware Mode (Testing)
+### Default Mode (Auto-detect Hardware)
+
+Simply run the GUI - it will automatically detect and connect to Arduino boards:
 
 ```bash
 python gui.py
 ```
 
-### Real Hardware Mode (Production)
+The system will:
+1. 🔍 Auto-detect connected Arduino/MKS Gen 1.4 boards
+2. ⚡ Connect to detected boards automatically
+3. 📊 Start monitoring sensors in real-time
+4. 🔄 Fall back to simulation mode if no hardware found
+
+### List Available Ports
 
 ```bash
-# Auto-detect Arduino boards
-python gui.py --real-hardware
-
-# Specify ports manually
-python gui.py --real-hardware --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
-
-# List available ports
 python gui.py --list-ports
+```
+
+### Simulation Mode (No Hardware)
+
+Force simulation mode for testing without hardware:
+
+```bash
+python gui.py --mock
+# or
+python gui.py --simulation
+```
+
+### Manual Port Specification
+
+Override auto-detection and specify ports manually:
+
+```bash
+# Specify gate port only
+python gui.py --gate-port /dev/ttyUSB0
+
+# Specify both ports
+python gui.py --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
 ```
 
 **For detailed hardware setup instructions, see [HARDWARE_SETUP.md](HARDWARE_SETUP.md)**
