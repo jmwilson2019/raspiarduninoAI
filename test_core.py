@@ -162,9 +162,14 @@ class TestHopperCore:
 
     def test_tick_evaluates_current_state(self):
         hardware = MockHardware()
+        config = CoreConfig(command_cooldown_s=0.01)  # Very short cooldown
         policy_config = PolicyConfig(low_material_distance_mm=500)
         policy_engine = PolicyEngine(policy_config)
-        core = HopperCore(hardware=hardware, policy_engine=policy_engine)
+        core = HopperCore(
+            hardware=hardware,
+            policy_engine=policy_engine,
+            config=config
+        )
 
         # Update state
         payload = {
@@ -175,8 +180,9 @@ class TestHopperCore:
         }
         core.on_sensor_payload(payload)
 
-        # Clear previous commands
+        # Clear previous commands and wait for cooldown
         hardware.gate_commands.clear()
+        sleep(0.05)  # Wait for cooldown to expire
 
         # Manually trigger evaluation
         decision = core.tick()
@@ -244,7 +250,7 @@ class TestHopperCore:
 
     def test_prune_command_cache(self):
         hardware = MockHardware()
-        config = CoreConfig(command_cooldown_s=0.1)
+        config = CoreConfig(command_cooldown_s=0.01)  # Very short cooldown
         core = HopperCore(hardware=hardware, config=config)
 
         # Mark command sent
@@ -252,7 +258,9 @@ class TestHopperCore:
         assert len(core._last_sent_at) == 1
 
         # Wait for cache retention to expire
-        sleep(1.5)
+        # Cache is retained for cooldown * 10, with min of 5s
+        # So with 0.01s cooldown, retention is max(0.1, 5.0) = 5.0s
+        sleep(5.5)
 
         # Prune should remove old entries
         core._prune_command_cache()

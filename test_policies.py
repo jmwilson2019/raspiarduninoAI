@@ -155,7 +155,8 @@ class TestPolicyEngine:
 
     def test_stale_data_closes_gate(self):
         """Stale sensor data should close gate."""
-        engine = PolicyEngine()
+        config = PolicyConfig(stale_after_s=0.0)  # Threshold of 0 means immediately stale
+        engine = PolicyEngine(config)
         # Create a state that will be stale
         state = HopperState(gate_open=True)
         # Force staleness by checking with very short threshold

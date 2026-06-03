@@ -2,6 +2,82 @@
 
 Hopper gate valve + telescope control integration.
 
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+This library provides a policy-based control system for managing a hopper gate valve based on sensor inputs (ultrasonic distance, dust detection, PIR motion).
+
+### Basic Example
+
+```python
+from core import build_default_core
+from policies import PolicyConfig, PolicyEngine
+
+# Implement the hardware interface
+class MyHardware:
+    def send_gate(self, command: str) -> None:
+        # Send command to gate controller
+        print(f"Gate: {command}")
+
+    def send_tele(self, command: str) -> None:
+        # Send command to telescope controller
+        print(f"Telescope: {command}")
+
+# Create the control system
+hardware = MyHardware()
+core = build_default_core(hardware=hardware, logger=print)
+
+# Process sensor data
+sensor_payload = {
+    "board_id": "GATE_001",
+    "timestamp": 12345,
+    "sensors": {
+        "ultrasonic_mm": 450,  # Material level
+        "dust": False,
+        "pir_motion": False,
+        "gate_open": True
+    }
+}
+
+decision = core.on_sensor_payload(sensor_payload)
+```
+
+### Custom Policy Configuration
+
+```python
+from policies import PolicyConfig
+
+# Configure custom thresholds and behaviors
+config = PolicyConfig(
+    stale_after_s=5.0,              # Consider data stale after 5 seconds
+    low_material_distance_mm=500,   # Close gate when material < 500mm
+    close_on_dust=True,             # Close gate on dust detection
+    close_on_motion=True            # Close gate on PIR motion
+)
+
+policy_engine = PolicyEngine(config)
+core = HopperCore(hardware=hardware, policy_engine=policy_engine)
+```
+
+For more examples, see `example.py`.
+
+## Running Tests
+
+```bash
+pytest test_state.py test_policies.py test_core.py -v
+```
+
+## Architecture
+
+- **`state.py`**: Manages sensor state and data validation
+- **`policies.py`**: Policy engine that evaluates sensor state and makes decisions
+- **`core.py`**: Core controller that coordinates state, policy, and hardware interfaces
+
 ## Wiring
 
 ### Gate Board (MKS Gen V1.4) Final Pin Assignments
