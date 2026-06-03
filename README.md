@@ -9,10 +9,10 @@ Hopper gate valve + telescope control integration.
 | Component | Pin / Header | Notes |
 |---|---|---|
 | Gate Motor 1 | X (54 STEP, 55 DIR) | Standard |
-| Gate Motor 2 | Y (60 STEP, 61 DIR) | Synced with motor 1 |
+| Gate Motor 2 | Y (60 STEP, 61 DIR) | Firmware-commanded to same target as motor 1 |
 | Enable (both) | 38 | Active LOW |
 | Pump Relay | Heatbed (8) | High-current relay output |
-| Valve (PWM) | Hotend (9) | PWM range 0-255 |
+| Valve (PWM) | Hotend (9) | PWM range 0-255 (`0` closed, `255` full-open, intermediate = partial) |
 | HC-SR04 Trig | 17 | Digital output |
 | HC-SR04 Echo | 16 | Digital input |
 | Dust Sensor OUT | 18 | Digital input |
@@ -26,7 +26,7 @@ Telescope board wiring is unchanged from the existing 4-motor telescope setup.
 ## Wiring Notes
 
 - Tie all sensor grounds to the same board ground reference.
-- Confirm the gate enable logic is active LOW before first motion test.
+- Confirm the gate enable logic is active LOW before first motion test (`LOW` = drivers enabled, `HIGH` = disabled) to avoid unexpected movement.
 - Keep high-current pump relay wiring isolated from low-voltage sensor leads.
 - Verify HC-SR04 orientation and stable 5V supply before trusting distance data.
 
