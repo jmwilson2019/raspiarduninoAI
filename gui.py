@@ -8,11 +8,13 @@ Features:
 - Manual control interface
 - Alert notifications
 - System status indicators
+- Support for real hardware or mock hardware
 """
 
 from __future__ import annotations
 
 import sys
+import os
 from typing import Optional
 from datetime import datetime
 
@@ -193,13 +195,40 @@ class HolographicGauge(QWidget):
 class HolographicGUI(QMainWindow):
     """Main holographic GUI window."""
 
-    def __init__(self):
+    def __init__(self, use_real_hardware: bool = False, gate_port: str = "/dev/ttyUSB0",
+                 tele_port: Optional[str] = None):
         super().__init__()
         self.setWindowTitle("raspiarduninoAI - Holographic Control System")
         self.setGeometry(100, 100, 1200, 800)
 
         # Initialize hardware and core
-        self.hardware = MockHardwareGUI(self)
+        self.use_real_hardware = use_real_hardware
+
+        if use_real_hardware:
+            try:
+                from hardware import SerialHardware
+                self.hardware = SerialHardware(
+                    gate_port=gate_port,
+                    tele_port=tele_port,
+                    logger=self.log_message,
+                    sensor_callback=self._handle_real_sensor_data
+                )
+                # Try to connect
+                if self.hardware.connect(start_reading=True):
+                    self.log_message("[HARDWARE] Connected to real hardware", "green")
+                else:
+                    self.log_message("[HARDWARE] Failed to connect, using mock hardware", "red")
+                    self.hardware = MockHardwareGUI(self)
+                    self.use_real_hardware = False
+            except ImportError as e:
+                self.log_message(f"[HARDWARE] Cannot import hardware module: {e}", "red")
+                self.log_message("[HARDWARE] Using mock hardware", "cyan")
+                self.hardware = MockHardwareGUI(self)
+                self.use_real_hardware = False
+        else:
+            self.hardware = MockHardwareGUI(self)
+            self.log_message("[HARDWARE] Using mock hardware (simulation mode)", "cyan")
+
         self.core = build_default_core(hardware=self.hardware, logger=self._log_from_core)
 
         # Setup UI
@@ -495,31 +524,47 @@ class HolographicGUI(QMainWindow):
             }}
         """)
 
+    def _handle_real_sensor_data(self, data: dict):
+        """Handle sensor data from real hardware."""
+        # Process through core which updates state
+        decision = self.core.on_sensor_payload(data)
+        # GUI will be updated on next timer tick
+
     def _update_display(self):
         """Update the display with current sensor data."""
-        # Simulate sensor data changes
-        import random
-        self.sim_distance += random.uniform(-5, 5)
-        self.sim_distance = max(200, min(800, self.sim_distance))
+        # If using real hardware, sensor data comes from callbacks
+        # If using mock hardware, simulate sensor data
+        if not self.use_real_hardware:
+            # Simulate sensor data changes
+            import random
+            self.sim_distance += random.uniform(-5, 5)
+            self.sim_distance = max(200, min(800, self.sim_distance))
 
-        # Create sensor payload
-        payload = {
-            "board_id": "GATE_001",
-            "timestamp": int(datetime.now().timestamp() * 1000),
-            "sensors": {
-                "ultrasonic_mm": int(self.sim_distance),
-                "dust": self.sim_dust,
-                "pir_motion": self.sim_motion,
-                "gate_open": self.sim_gate_open
+            # Create sensor payload
+            payload = {
+                "board_id": "GATE_001",
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "sensors": {
+                    "ultrasonic_mm": int(self.sim_distance),
+                    "dust": self.sim_dust,
+                    "pir_motion": self.sim_motion,
+                    "gate_open": self.sim_gate_open
+                }
             }
-        }
 
-        # Process through core
-        decision = self.core.on_sensor_payload(payload)
+            # Process through core
+            decision = self.core.on_sensor_payload(payload)
+        else:
+            # In real hardware mode, just evaluate current state periodically
+            decision = self.core.tick()
 
-        # Update gauges
-        self.distance_gauge.update_value(self.sim_distance)
-        self.gate_gauge.update_value(1.0 if self.sim_gate_open else 0.0)
+        # Get current state
+        state = self.core.state_store.snapshot()
+
+        # Update gauges with real data from state
+        if state.ultrasonic_mm is not None:
+            self.distance_gauge.update_value(float(state.ultrasonic_mm))
+        self.gate_gauge.update_value(1.0 if state.gate_open else 0.0)
 
         # Update status labels
         state = self.core.state_store.snapshot()
@@ -622,6 +667,40 @@ class HolographicGUI(QMainWindow):
 
 def main():
     """Main entry point for the holographic GUI."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Holographic GUI for raspiarduninoAI")
+    parser.add_argument('--real-hardware', action='store_true',
+                       help='Use real hardware instead of mock (default: mock)')
+    parser.add_argument('--gate-port', default='/dev/ttyUSB0',
+                       help='Serial port for gate board (default: /dev/ttyUSB0)')
+    parser.add_argument('--tele-port', default=None,
+                       help='Serial port for telescope board (optional)')
+    parser.add_argument('--list-ports', action='store_true',
+                       help='List available serial ports and exit')
+
+    args = parser.parse_args()
+
+    # List ports if requested
+    if args.list_ports:
+        try:
+            from hardware import SerialHardware
+            ports = SerialHardware.list_serial_ports()
+            print("Available serial ports:")
+            for port in ports:
+                print(f"  {port}")
+            detected = SerialHardware.auto_detect_boards()
+            if detected:
+                print("\nLikely Arduino boards:")
+                for port in detected:
+                    print(f"  {port}")
+        except ImportError:
+            print("Error: pyserial not installed. Install with: pip install pyserial")
+        return
+
+    # Check for environment variable
+    use_real = args.real_hardware or os.environ.get('RASPI_USE_REAL_HARDWARE', '').lower() == 'true'
+
     app = QApplication(sys.argv)
 
     # Set application-wide font
@@ -629,7 +708,11 @@ def main():
     app.setFont(font)
 
     # Create and show the GUI
-    gui = HolographicGUI()
+    gui = HolographicGUI(
+        use_real_hardware=use_real,
+        gate_port=args.gate_port,
+        tele_port=args.tele_port
+    )
     gui.show()
 
     sys.exit(app.exec_())

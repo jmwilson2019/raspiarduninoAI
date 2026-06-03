@@ -1,4 +1,5 @@
-# Core dependencies (none currently - uses only Python standard library)
+# Core dependencies
+pyserial>=3.5
 
 # GUI dependencies
 PyQt5>=5.15.0
