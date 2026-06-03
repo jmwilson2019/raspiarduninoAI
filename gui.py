@@ -21,7 +21,7 @@ from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QGroupBox, QGridLayout, QTextEdit, QFrame,
-    QMenuBar, QMenu, QAction, QMessageBox, QInputDialog, QLineEdit
+    QMenuBar, QMenu, QAction, QMessageBox, QInputDialog, QLineEdit, QDialog
 )
 from PyQt5.QtCore import QTimer, Qt, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QPalette, QColor, QFont
@@ -292,7 +292,7 @@ class HolographicGUI(QMainWindow):
         # Main content area
         content_layout = QHBoxLayout()
 
-        # Left panel: Gauges
+        # Left panel: Gauges and visualizations
         gauges_panel = self._create_gauges_panel()
         content_layout.addWidget(gauges_panel, stretch=1)
 
@@ -300,9 +300,25 @@ class HolographicGUI(QMainWindow):
         status_panel = self._create_status_panel()
         content_layout.addWidget(status_panel, stretch=2)
 
-        # Right panel: Controls
+        # Right panel: Controls and Power Monitor
+        right_layout = QVBoxLayout()
+
         control_panel = self._create_control_panel()
-        content_layout.addWidget(control_panel, stretch=1)
+        right_layout.addWidget(control_panel)
+
+        # Add power monitor if enabled
+        if self.system_config.power.monitor_voltage or self.system_config.power.monitor_current:
+            from visualizations import PowerMonitorWidget
+            self.power_monitor = PowerMonitorWidget()
+            self.power_monitor.set_warning_thresholds(
+                self.system_config.power.voltage_warning_v,
+                self.system_config.power.current_warning_a
+            )
+            right_layout.addWidget(self.power_monitor)
+        else:
+            self.power_monitor = None
+
+        content_layout.addLayout(right_layout, stretch=1)
 
         main_layout.addLayout(content_layout)
 
@@ -417,16 +433,18 @@ class HolographicGUI(QMainWindow):
                 return
 
         self.log_message("[CONFIG] Opening advanced settings", "cyan")
-        # TODO: Implement advanced settings dialog
-        QMessageBox.information(
-            self, "Advanced Settings",
-            "Advanced Settings dialog will be implemented here.\n\n"
-            "This will include:\n"
-            "• Motor step configuration\n"
-            "• UI customization\n"
-            "• Camera-style menu navigation\n"
-            "• Power monitoring settings"
-        )
+
+        from advanced_settings import AdvancedSettingsDialog
+        dialog = AdvancedSettingsDialog(self.system_config, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.system_config = dialog.get_config()
+            self.config_manager.save(self.system_config)
+            self.log_message("[CONFIG] Advanced settings saved", "green")
+            QMessageBox.information(self, "Settings Saved", "Advanced settings have been saved successfully!")
+
+            # Update window title if changed
+            if self.windowTitle() != self.system_config.window_title:
+                self.setWindowTitle(self.system_config.window_title)
 
     def _export_config(self):
         """Export configuration to file."""
@@ -556,6 +574,11 @@ class HolographicGUI(QMainWindow):
             "MATERIAL LEVEL", 0, 1000, "mm", HOLO_CYAN
         )
         layout.addWidget(self.distance_gauge)
+
+        # Ultrasonic beam visualization
+        from visualizations import UltrasonicBeamWidget
+        self.ultrasonic_viz = UltrasonicBeamWidget()
+        layout.addWidget(self.ultrasonic_viz)
 
         # Gate position indicator
         self.gate_gauge = HolographicGauge(
@@ -791,7 +814,17 @@ class HolographicGUI(QMainWindow):
         # Update gauges with real data from state
         if state.ultrasonic_mm is not None:
             self.distance_gauge.update_value(float(state.ultrasonic_mm))
+            # Update ultrasonic visualization
+            self.ultrasonic_viz.set_distance(float(state.ultrasonic_mm))
         self.gate_gauge.update_value(1.0 if state.gate_open else 0.0)
+
+        # Update power monitor if enabled
+        if self.power_monitor and (self.system_config.power.monitor_voltage or self.system_config.power.monitor_current):
+            # Simulate power readings for demo (in real hardware, get from sensor data)
+            import random
+            voltage = 12.0 + random.uniform(-0.5, 0.5)
+            current = 2.5 + random.uniform(-0.3, 0.3)
+            self.power_monitor.update_readings(voltage, current)
 
         # Update status labels
         state = self.core.state_store.snapshot()
