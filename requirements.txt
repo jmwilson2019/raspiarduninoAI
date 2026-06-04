@@ -1,0 +1,10 @@
+# Core dependencies
+pyserial>=3.5
+
+# GUI dependencies
+PyQt5>=5.15.0
+pyqtgraph>=0.13.0
+
+# Development dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0

@@ -1,6 +1,160 @@
 # raspiarduninoAI
 
-Hopper gate valve + telescope control integration.
+Hopper gate valve + telescope control integration with holographic GUI.
+
+**Auto-detects and connects to Arduino/MKS Gen 1.4 boards by default!**
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+### Default Mode (Auto-detect Hardware)
+
+Simply run the GUI - it will automatically detect and connect to Arduino boards:
+
+```bash
+python gui.py
+```
+
+The system will:
+1. 🔍 Auto-detect connected Arduino/MKS Gen 1.4 boards
+2. ⚡ Connect to detected boards automatically
+3. 📊 Start monitoring sensors in real-time
+4. 🔄 Fall back to simulation mode if no hardware found
+
+### List Available Ports
+
+```bash
+python gui.py --list-ports
+```
+
+### Simulation Mode (No Hardware)
+
+Force simulation mode for testing without hardware:
+
+```bash
+python gui.py --mock
+# or
+python gui.py --simulation
+```
+
+### Manual Port Specification
+
+Override auto-detection and specify ports manually:
+
+```bash
+# Specify gate port only
+python gui.py --gate-port /dev/ttyUSB0
+
+# Specify both ports
+python gui.py --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
+```
+
+**For detailed hardware setup instructions, see [HARDWARE_SETUP.md](HARDWARE_SETUP.md)**
+
+## Usage
+
+This library provides a policy-based control system for managing a hopper gate valve based on sensor inputs (ultrasonic distance, dust detection, PIR motion).
+
+### Holographic GUI
+
+Launch the holographic GUI interface for real-time monitoring and control:
+
+```bash
+python gui.py
+```
+
+**Features:**
+- 🌟 Futuristic holographic design with neon cyan/purple theme
+- 📊 Real-time sensor monitoring with animated circular gauges
+- 🎮 Manual control interface for gate operations
+- 🚨 Live alert notifications and system status
+- 📝 Real-time system log with color-coded messages
+- ⚡ Smooth animations and visual effects
+
+The GUI provides:
+- **Sensor Telemetry Panel**: Live gauges showing material level and gate status
+- **System Status Panel**: Detailed sensor readings and active alerts
+- **Manual Controls Panel**: Buttons to open/close gate and simulate sensor events
+- **System Log**: Real-time logging of all system events
+
+### Basic Example
+
+```python
+from core import build_default_core
+from policies import PolicyConfig, PolicyEngine
+
+# Implement the hardware interface
+class MyHardware:
+    def send_gate(self, command: str) -> None:
+        # Send command to gate controller
+        print(f"Gate: {command}")
+
+    def send_tele(self, command: str) -> None:
+        # Send command to telescope controller
+        print(f"Telescope: {command}")
+
+# Create the control system
+hardware = MyHardware()
+core = build_default_core(hardware=hardware, logger=print)
+
+# Process sensor data
+sensor_payload = {
+    "board_id": "GATE_001",
+    "timestamp": 12345,
+    "sensors": {
+        "ultrasonic_mm": 450,  # Material level
+        "dust": False,
+        "pir_motion": False,
+        "gate_open": True
+    }
+}
+
+decision = core.on_sensor_payload(sensor_payload)
+```
+
+### Custom Policy Configuration
+
+```python
+from policies import PolicyConfig
+
+# Configure custom thresholds and behaviors
+config = PolicyConfig(
+    stale_after_s=5.0,              # Consider data stale after 5 seconds
+    low_material_distance_mm=500,   # Close gate when material < 500mm
+    close_on_dust=True,             # Close gate on dust detection
+    close_on_motion=True            # Close gate on PIR motion
+)
+
+policy_engine = PolicyEngine(config)
+core = HopperCore(hardware=hardware, policy_engine=policy_engine)
+```
+
+For more examples, see `example.py`.
+
+## Running Tests
+
+```bash
+# Run all tests
+pytest test_state.py test_policies.py test_core.py test_gui.py -v
+
+# Run tests without GUI tests (if display not available)
+pytest test_state.py test_policies.py test_core.py -v
+
+# Run with coverage
+pytest -v --cov=. --cov-report=term-missing
+```
+
+## Architecture
+
+- **`state.py`**: Manages sensor state and data validation
+- **`policies.py`**: Policy engine that evaluates sensor state and makes decisions
+- **`core.py`**: Core controller that coordinates state, policy, and hardware interfaces
+- **`gui.py`**: Holographic GUI for real-time monitoring and control
 
 ## Wiring
 
