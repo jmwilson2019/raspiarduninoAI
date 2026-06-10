@@ -6,8 +6,22 @@ Hopper gate valve + telescope control integration with holographic GUI.
 
 ## Installation
 
+### Core install
+
 ```bash
-pip install -r requirements.txt
+pip install raspiarduninoai
+```
+
+### GUI install
+
+```bash
+pip install "raspiarduninoai[gui]"
+```
+
+### Local development install
+
+```bash
+pip install -e ".[dev,gui]"
 ```
 
 ## Quick Start
@@ -17,7 +31,7 @@ pip install -r requirements.txt
 Simply run the GUI - it will automatically detect and connect to Arduino boards:
 
 ```bash
-python gui.py
+raspiarduninoai-gui
 ```
 
 The system will:
@@ -29,7 +43,7 @@ The system will:
 ### List Available Ports
 
 ```bash
-python gui.py --list-ports
+raspiarduninoai-gui --list-ports
 ```
 
 ### Simulation Mode (No Hardware)
@@ -37,9 +51,7 @@ python gui.py --list-ports
 Force simulation mode for testing without hardware:
 
 ```bash
-python gui.py --mock
-# or
-python gui.py --simulation
+raspiarduninoai-gui --mock
 ```
 
 ### Manual Port Specification
@@ -48,10 +60,10 @@ Override auto-detection and specify ports manually:
 
 ```bash
 # Specify gate port only
-python gui.py --gate-port /dev/ttyUSB0
+raspiarduninoai-gui --gate-port /dev/ttyUSB0
 
 # Specify both ports
-python gui.py --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
+raspiarduninoai-gui --gate-port /dev/ttyUSB0 --tele-port /dev/ttyUSB1
 ```
 
 **For detailed hardware setup instructions, see [HARDWARE_SETUP.md](HARDWARE_SETUP.md)**
@@ -65,7 +77,7 @@ This library provides a policy-based control system for managing a hopper gate v
 Launch the holographic GUI interface for real-time monitoring and control:
 
 ```bash
-python gui.py
+raspiarduninoai-gui
 ```
 
 **Features:**
@@ -148,6 +160,30 @@ pytest test_state.py test_policies.py test_core.py -v
 # Run with coverage
 pytest -v --cov=. --cov-report=term-missing
 ```
+
+## Release Readiness
+
+This repository runs automated checks for each push/PR:
+- install/build verification (`pip install .` and `python -m build`)
+- dependency vulnerability audit (`pip-audit`)
+- automated test suite
+
+Release publishing is automated via GitHub Actions:
+- pre-release (`prereleased`) → TestPyPI
+- full release (`published`) → PyPI
+
+### One-time PyPI setup
+
+1. Create projects on both indexes:
+   - https://test.pypi.org/project/raspiarduninoai/
+   - https://pypi.org/project/raspiarduninoai/
+2. In each project, configure **Trusted Publishers** for this repository and workflow:
+   - Repository: `jmwilson2019/raspiarduninoAI`
+   - Workflow file:
+     - `.github/workflows/release-testpypi.yml` (TestPyPI)
+     - `.github/workflows/release.yml` (PyPI)
+3. Create a GitHub pre-release to validate publishing to TestPyPI.
+4. After validation, publish a full GitHub release to publish to PyPI.
 
 ## Architecture
 

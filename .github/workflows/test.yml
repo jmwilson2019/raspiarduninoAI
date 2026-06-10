@@ -24,7 +24,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install ".[dev,gui]"
+
+    - name: Audit dependencies
+      run: |
+        pip-audit -r requirements.txt
+
+    - name: Verify package installs and builds
+      run: |
+        pip install .
+        python -m build
 
     - name: Run tests
       run: |
