@@ -168,7 +168,22 @@ This repository runs automated checks for each push/PR:
 - dependency vulnerability audit (`pip-audit`)
 - automated test suite
 
-Release publishing is automated via GitHub Actions when a GitHub Release is published.
+Release publishing is automated via GitHub Actions:
+- pre-release (`prereleased`) → TestPyPI
+- full release (`published`) → PyPI
+
+### One-time PyPI setup
+
+1. Create projects on both indexes:
+   - https://test.pypi.org/project/raspiarduninoai/
+   - https://pypi.org/project/raspiarduninoai/
+2. In each project, configure **Trusted Publishers** for this repository and workflow:
+   - Repository: `jmwilson2019/raspiarduninoAI`
+   - Workflow file:
+     - `.github/workflows/release-testpypi.yml` (TestPyPI)
+     - `.github/workflows/release.yml` (PyPI)
+3. Create a GitHub pre-release to validate publishing to TestPyPI.
+4. After validation, publish a full GitHub release to publish to PyPI.
 
 ## Architecture
 
