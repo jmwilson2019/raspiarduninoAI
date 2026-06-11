@@ -40,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-raspiarduninoai-gui = "gui:main"
+raspiarduninoai-gui = "gui_launcher:main"
 
 [project.urls]
 "Homepage" = "https://github.com/jmwilson2019/raspiarduninoAI"
@@ -66,6 +66,7 @@ py-modules = [
     "core",
     "example",
     "gui",
+    "gui_launcher",
     "hardware",
     "policies",
     "setup_wizard",
