@@ -703,6 +703,13 @@ class HolographicGUI(QMainWindow):
         """)
         layout.addWidget(self.log_display)
 
+        # Flush any messages buffered before the widget existed.
+        for ts, hex_color, message in getattr(self, "_pending_log", []):
+            self.log_display.append(
+                f'<span style="color: {hex_color}">[{ts}] {message}</span>'
+            )
+        self._pending_log = []
+
         group.setLayout(layout)
         return group
 
@@ -911,6 +918,16 @@ class HolographicGUI(QMainWindow):
             "white": HOLO_TEXT
         }
         hex_color = color_map.get(color, HOLO_TEXT)
+
+        # Messages can be logged during hardware init, before _setup_ui()
+        # creates the log widget. Buffer them and echo to the console; the
+        # buffer is flushed into the widget as soon as it exists.
+        if getattr(self, "log_display", None) is None:
+            print(f"[{timestamp}] {message}")
+            if not hasattr(self, "_pending_log"):
+                self._pending_log = []
+            self._pending_log.append((timestamp, hex_color, message))
+            return
 
         self.log_display.append(
             f'<span style="color: {hex_color}">[{timestamp}] {message}</span>'

@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QStackedWidget, QListWidget, QListWidgetItem, QWidget,
     QSpinBox, QDoubleSpinBox, QCheckBox, QLineEdit, QGroupBox,
-    QGridLayout, QSlider, QComboBox
+    QGridLayout, QSlider, QComboBox, QScrollArea
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -69,12 +69,12 @@ class AdvancedSettingsDialog(QDialog):
         self.pages = QStackedWidget()
 
         # Create pages
-        self.pages.addWidget(self._create_system_page())
-        self.pages.addWidget(self._create_motors_page())
-        self.pages.addWidget(self._create_sensors_page())
-        self.pages.addWidget(self._create_power_page())
-        self.pages.addWidget(self._create_ui_page())
-        self.pages.addWidget(self._create_communication_page())
+        self.pages.addWidget(self._scrollable(self._create_system_page()))
+        self.pages.addWidget(self._scrollable(self._create_motors_page()))
+        self.pages.addWidget(self._scrollable(self._create_sensors_page()))
+        self.pages.addWidget(self._scrollable(self._create_power_page()))
+        self.pages.addWidget(self._scrollable(self._create_ui_page()))
+        self.pages.addWidget(self._scrollable(self._create_communication_page()))
 
         # Add to layout
         layout.addWidget(self.menu_list)
@@ -103,7 +103,14 @@ class AdvancedSettingsDialog(QDialog):
         outer_layout = QVBoxLayout(self)
         outer_layout.addWidget(widget)
 
-    def _create_system_page(self) -> QWidget:
+    def _scrollable(self, page: QWidget) -> QScrollArea:
+        """Wrap a settings page in a vertical scroll area."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        return scroll
+
         """Create system settings page."""
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -455,6 +462,7 @@ class AdvancedSettingsDialog(QDialog):
             }}
             QLabel {{
                 color: {HOLO_TEXT};
+                font-size: 14px;
             }}
             QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
                 background-color: {HOLO_PANEL};
@@ -463,6 +471,7 @@ class AdvancedSettingsDialog(QDialog):
                 border-radius: 3px;
                 padding: 5px;
                 min-width: 150px;
+                font-size: 14px;
             }}
             QCheckBox {{
                 color: {HOLO_TEXT};
@@ -510,7 +519,7 @@ class AdvancedSettingsDialog(QDialog):
         """)
 
         # Set font
-        font = QFont("Courier New", 10)
+        font = QFont("Courier New", 12)
         self.setFont(font)
 
     def get_config(self) -> SystemConfig:
