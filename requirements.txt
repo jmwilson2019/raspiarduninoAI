@@ -5,5 +5,13 @@ pyserial>=3.5
 PyQt5>=5.15.0
 pyqtgraph>=0.13.0
 
+# Seraphina cockpit GUI dependency
+customtkinter>=5.2
+
+# NOTE: seraphina-agi is intentionally NOT a runtime dependency of the rig.
+# The cockpit reaches a Seraphina instance running on a separate desktop over
+# SSH, so seraphina-agi is installed on that desktop only, not on the
+# controller/Pi running this package.
+
 # Development tools (pytest, pytest-cov, pip-audit, build) are not runtime
 # dependencies; install them with: pip install ".[dev]"
