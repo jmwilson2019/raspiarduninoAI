@@ -15,9 +15,10 @@ This script wires together:
     - HC-SR04, dust sensor and PIR live on digital pins and are reported back
       in the periodic JSON line emitted by the gate board.
 
-* The Seraphina AGI runtime (``seraphina-agi`` on PyPI - same author as this
-  repository).  If the Python API is importable it is preferred; otherwise the
-  ``seraphina`` CLI is invoked via :mod:`subprocess` as a fallback.
+* A Seraphina AGI instance (``seraphina-agi`` on PyPI).  Seraphina runs on a
+  separate desktop on the local network, not on the rig.  The cockpit reaches
+  it over SSH and invokes the real ``seraphina -c "<intent>"`` CLI; if a host is
+  not configured it falls back to a locally installed ``seraphina`` CLI.
 
 The UI is laid out like a small cockpit: a permanent gauge cluster sits above
 the controls so the operator can always see hopper level, valve opening, pump
@@ -26,8 +27,11 @@ state, dust and flow indicators at a glance.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import os
+import shlex
 import shutil
 import subprocess
 import threading
@@ -103,85 +107,110 @@ HUD_FONT_FAMILY = "Consolas"  # falls back to system monospace if unavailable
 
 
 class SeraphinaBridge:
-    """Best-effort adapter for talking to the Seraphina AGI runtime.
+    """Adapter for talking to a Seraphina AGI instance via its real CLI.
 
-    The package exposes a few different surfaces depending on version; we try
-    the most likely Python entry points first and fall back to the installed
-    ``seraphina`` CLI.  Every public method is safe to call even when nothing
-    is installed - it simply returns an explanatory string.
+    Seraphina normally runs on a separate desktop on the local network.  When a
+    ``host`` is configured the cockpit reaches it over SSH and runs
+    ``seraphina -c \"<intent>\"`` there.  When no host is set, a locally installed
+    ``seraphina`` CLI is used as a fallback.  Every public method is safe to
+    call even when nothing is reachable - it simply returns an explanatory
+    string.
+
+    Parameters
+    ----------
+    host:
+        Hostname or IP of the desktop running Seraphina (e.g.
+        ``synergro-pc.local``).  ``None`` disables the remote leg.
+    user:
+        SSH username on that desktop.  Required for the remote leg.
+    ssh_timeout_s:
+        Connection timeout for the SSH transport.
+    allow_local:
+        When ``True``, fall back to a ``seraphina`` CLI on this machine if no
+        remote host is configured.
     """
 
-    def __init__(self) -> None:
-        self._py_callable = self._discover_python_api()
-        self._cli_path = shutil.which("seraphina")
+    def __init__(
+        self,
+        *,
+        host: Optional[str] = None,
+        user: Optional[str] = None,
+        ssh_timeout_s: float = 8.0,
+        allow_local: bool = True,
+    ) -> None:
+        self._host = (host or "").strip() or None
+        self._user = (user or "").strip() or None
+        self._ssh_timeout_s = ssh_timeout_s
+        self._ssh_path = shutil.which("ssh") if self._host else None
+        self._cli_path = shutil.which("seraphina") if allow_local else None
 
-    @staticmethod
-    def _discover_python_api():
-        candidates = (
-            ("seraphina", "chat"),
-            ("seraphina", "ask"),
-            ("seraphina", "run"),
-            ("seraphina.agi", "chat"),
-            ("seraphina.agi", "ask"),
-        )
-        for module_name, attr in candidates:
-            try:
-                module = __import__(module_name, fromlist=[attr])
-            except Exception:
-                continue
-            func = getattr(module, attr, None)
-            if callable(func):
-                return func
-        return None
+    @property
+    def _remote_ready(self) -> bool:
+        return bool(self._host and self._user and self._ssh_path)
 
     @property
     def available(self) -> bool:
-        return self._py_callable is not None or self._cli_path is not None
+        return self._remote_ready or self._cli_path is not None
 
     @property
     def backend(self) -> str:
-        if self._py_callable is not None:
-            return "python-api"
+        if self._remote_ready:
+            return f"ssh:{self._user}@{self._host}"
         if self._cli_path is not None:
-            return "cli"
+            return "local-cli"
         return "unavailable"
 
-    def ask(self, prompt: str, timeout_s: float = 15.0) -> str:
+    def ask(self, prompt: str, timeout_s: float = 30.0) -> str:
         prompt = prompt.strip()
         if not prompt:
             return ""
 
-        if self._py_callable is not None:
-            try:
-                result = self._py_callable(prompt)
-                if result is None:
-                    return ""
-                return str(result).strip()
-            except Exception as exc:  # pragma: no cover - depends on runtime
-                return f"Seraphina Python API error: {exc}"
+        if self._remote_ready:
+            # ssh joins remaining args into a remote shell command, so the
+            # prompt must be quoted for the remote shell.
+            remote_cmd = f"seraphina -c {shlex.quote(prompt)}"
+            argv = [
+                self._ssh_path,
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={int(self._ssh_timeout_s)}",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+                f"{self._user}@{self._host}",
+                remote_cmd,
+            ]
+            return self._run(argv, timeout_s, label=f"Seraphina@{self._host}")
 
         if self._cli_path is not None:
-            try:
-                completed = subprocess.run(
-                    [self._cli_path, prompt],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_s,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired:
-                return f"Seraphina CLI timed out after {timeout_s:.0f}s"
-            except Exception as exc:  # pragma: no cover - depends on runtime
-                return f"Seraphina CLI error: {exc}"
-            output = (completed.stdout or "").strip()
-            if not output:
-                output = (completed.stderr or "").strip()
-            return output or "(Seraphina returned no output)"
+            argv = [self._cli_path, "-c", prompt]
+            return self._run(argv, timeout_s, label="Seraphina (local)")
 
         return (
-            "Seraphina runtime not detected. Install with `pip install seraphina-agi` "
-            "to enable AGI assistance."
+            "Seraphina not reachable. Set --seraphina-host (or SERAPHINA_HOST) to "
+            "the desktop running seraphina-agi, or install the seraphina CLI locally."
         )
+
+    @staticmethod
+    def _run(argv: list, timeout_s: float, *, label: str) -> str:
+        try:
+            completed = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return f"{label} timed out after {timeout_s:.0f}s"
+        except Exception as exc:  # pragma: no cover - depends on runtime
+            return f"{label} error: {exc}"
+        output = (completed.stdout or "").strip()
+        if not output:
+            output = (completed.stderr or "").strip()
+        if completed.returncode != 0 and not output:
+            return f"{label} exited with code {completed.returncode}"
+        return output or "(Seraphina returned no output)"
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +462,7 @@ class SerialHardware:
 
 
 class SeraphinaCockpitGUI:
-    def __init__(self) -> None:
+    def __init__(self, seraphina: Optional["SeraphinaBridge"] = None) -> None:
         self.root = ctk.CTk()
         self.root.title("Seraphina AGI - Hopper Cockpit")
         self.root.geometry("1280x820")
@@ -451,7 +480,7 @@ class SeraphinaCockpitGUI:
             logger=self._log_threadsafe,
         )
 
-        self.seraphina = SeraphinaBridge()
+        self.seraphina = seraphina or SeraphinaBridge()
 
         self.current_preset = next(iter(GATE_PRESETS))
         self.valve_open_pct: float = 0.0
@@ -1088,7 +1117,40 @@ class SeraphinaCockpitGUI:
 
 
 def main() -> None:
-    SeraphinaCockpitGUI().run()
+    parser = argparse.ArgumentParser(
+        description="Seraphina hopper cockpit GUI.",
+    )
+    parser.add_argument(
+        "--seraphina-host",
+        default=os.environ.get("SERAPHINA_HOST"),
+        help="Hostname/IP of the desktop running seraphina-agi "
+        "(default: $SERAPHINA_HOST). If unset, falls back to a local seraphina CLI.",
+    )
+    parser.add_argument(
+        "--seraphina-user",
+        default=os.environ.get("SERAPHINA_USER"),
+        help="SSH username on the Seraphina desktop (default: $SERAPHINA_USER).",
+    )
+    parser.add_argument(
+        "--seraphina-ssh-timeout",
+        type=float,
+        default=float(os.environ.get("SERAPHINA_SSH_TIMEOUT", "8")),
+        help="SSH connection timeout in seconds (default: 8).",
+    )
+    parser.add_argument(
+        "--no-local-seraphina",
+        action="store_true",
+        help="Disable the local seraphina CLI fallback (remote host only).",
+    )
+    args = parser.parse_args()
+
+    bridge = SeraphinaBridge(
+        host=args.seraphina_host,
+        user=args.seraphina_user,
+        ssh_timeout_s=args.seraphina_ssh_timeout,
+        allow_local=not args.no_local_seraphina,
+    )
+    SeraphinaCockpitGUI(seraphina=bridge).run()
 
 
 if __name__ == "__main__":
