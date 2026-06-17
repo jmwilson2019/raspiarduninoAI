@@ -31,7 +31,6 @@ import argparse
 import json
 import math
 import os
-import shlex
 import shutil
 import subprocess
 import threading
@@ -166,13 +165,19 @@ class SeraphinaBridge:
             return ""
 
         if self._remote_ready:
-            # ssh joins remaining args into a remote shell command, so the
-            # prompt must be quoted for the remote shell.  Invoke via the
-            # Python launcher (``py -m seraphina``) instead of the bare
-            # ``seraphina`` script: a non-interactive SSH session on Windows
-            # does not have the per-user Scripts directory on PATH, and the
-            # launcher keeps working across Python version upgrades.
-            remote_cmd = f"py -m seraphina -c {shlex.quote(prompt)}"
+            # The Seraphina desktop runs Windows; its non-interactive SSH
+            # shell is cmd.exe, so the intent is wrapped in double quotes
+            # (POSIX-style single quoting would be passed through literally).
+            # Natural-language chat rarely needs literal double quotes, so any
+            # are folded to single quotes and newlines flattened to keep the
+            # remote command on one line.  Invoke via the Python launcher
+            # (``py -m seraphina``) rather than the bare ``seraphina`` script:
+            # a non-interactive SSH session on Windows lacks the per-user
+            # Scripts dir on PATH, and the launcher survives Python upgrades.
+            # ``-X utf8`` forces UTF-8 stdout so emoji in Seraphina's replies
+            # don't crash the desktop's cp1252 console.
+            safe = prompt.replace('"', "'").replace("\r", " ").replace("\n", " ")
+            remote_cmd = f'py -X utf8 -m seraphina -c "{safe}"'
             argv = [
                 self._ssh_path,
                 "-o",
