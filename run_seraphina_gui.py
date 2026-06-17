@@ -178,17 +178,7 @@ class SeraphinaBridge:
             # don't crash the desktop's cp1252 console.
             safe = prompt.replace('"', "'").replace("\r", " ").replace("\n", " ")
             remote_cmd = f'py -X utf8 -m seraphina -c "{safe}"'
-            argv = [
-                self._ssh_path,
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                f"ConnectTimeout={int(self._ssh_timeout_s)}",
-                "-o",
-                "StrictHostKeyChecking=accept-new",
-                f"{self._user}@{self._host}",
-                remote_cmd,
-            ]
+            argv = self._remote_argv(remote_cmd)
             return self._run(argv, timeout_s, label=f"Seraphina@{self._host}")
 
         if self._cli_path is not None:
@@ -199,6 +189,46 @@ class SeraphinaBridge:
             "Seraphina not reachable. Set --seraphina-host (or SERAPHINA_HOST) to "
             "the desktop running seraphina-agi, or install the seraphina CLI locally."
         )
+
+    def _remote_argv(self, remote_cmd: str) -> list:
+        """Build the ``ssh`` argv that runs ``remote_cmd`` on the desktop."""
+        return [
+            self._ssh_path,
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            f"ConnectTimeout={int(self._ssh_timeout_s)}",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            f"{self._user}@{self._host}",
+            remote_cmd,
+        ]
+
+    def reachable(self, timeout_s: float = 10.0) -> bool:
+        """Preflight: confirm the configured Seraphina backend actually answers.
+
+        Returns ``True`` only when the backend responds to
+        ``seraphina --version`` with exit code 0.  Intended for headless
+        health checks - e.g. a Raspberry Pi verifying it can reach the bridge
+        over Wi-Fi before starting the cockpit.
+        """
+        if self._remote_ready:
+            argv = self._remote_argv("py -X utf8 -m seraphina --version")
+        elif self._cli_path is not None:
+            argv = [self._cli_path, "--version"]
+        else:
+            return False
+        try:
+            completed = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+        return completed.returncode == 0
 
     @staticmethod
     def _run(argv: list, timeout_s: float, *, label: str) -> str:
@@ -1151,6 +1181,13 @@ def main() -> None:
         action="store_true",
         help="Disable the local seraphina CLI fallback (remote host only).",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Preflight only: verify Seraphina is reachable, print status, and "
+        "exit 0 (reachable) or 1 (unreachable) without launching the GUI. "
+        "Intended for headless/Raspberry Pi health checks.",
+    )
     args = parser.parse_args()
 
     bridge = SeraphinaBridge(
@@ -1159,6 +1196,13 @@ def main() -> None:
         ssh_timeout_s=args.seraphina_ssh_timeout,
         allow_local=not args.no_local_seraphina,
     )
+
+    if args.check:
+        ok = bridge.reachable(timeout_s=max(args.seraphina_ssh_timeout, 10.0))
+        status = "reachable" if ok else "UNREACHABLE"
+        print(f"seraphina bridge: {bridge.backend} -> {status}")
+        raise SystemExit(0 if ok else 1)
+
     SeraphinaCockpitGUI(seraphina=bridge).run()
 
 
