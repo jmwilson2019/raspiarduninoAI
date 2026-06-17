@@ -167,8 +167,12 @@ class SeraphinaBridge:
 
         if self._remote_ready:
             # ssh joins remaining args into a remote shell command, so the
-            # prompt must be quoted for the remote shell.
-            remote_cmd = f"seraphina -c {shlex.quote(prompt)}"
+            # prompt must be quoted for the remote shell.  Invoke via the
+            # Python launcher (``py -m seraphina``) instead of the bare
+            # ``seraphina`` script: a non-interactive SSH session on Windows
+            # does not have the per-user Scripts directory on PATH, and the
+            # launcher keeps working across Python version upgrades.
+            remote_cmd = f"py -m seraphina -c {shlex.quote(prompt)}"
             argv = [
                 self._ssh_path,
                 "-o",
