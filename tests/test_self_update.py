@@ -110,6 +110,21 @@ class TestSelfUpdateReality(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertIn("uncommitted", res["error"])
 
+    def test_untracked_file_does_not_block_apply(self):
+        # A stray untracked local artifact (runtime state, logs) must NOT block
+        # a fast-forward update — git can't lose it, and a deployed app carries
+        # such files legitimately.
+        self._push_upstream_commit()
+        with open(os.path.join(self.work, "runtime.log"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("local runtime\n")
+        self.assertFalse(asu.is_dirty(cwd=self.work))
+        res = asu.apply(cwd=self.work)
+        self.assertTrue(res["ok"], res.get("error"))
+        self.assertTrue(res["updated"])
+        # The untracked artifact survived the update.
+        self.assertTrue(os.path.exists(os.path.join(self.work, "runtime.log")))
+
     def test_apply_refuses_diverged_without_force(self):
         self._push_upstream_commit()
         # Local commit that is NOT on upstream -> diverged.

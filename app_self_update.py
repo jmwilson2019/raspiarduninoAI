@@ -91,9 +91,18 @@ def current_commit(cwd: Optional[str] = None) -> Optional[str]:
     return res["out"] if res["ok"] and res["out"] else None
 
 
-def is_dirty(cwd: Optional[str] = None) -> bool:
-    """True if the working tree has uncommitted changes."""
-    res = _git(["status", "--porcelain"], cwd=cwd)
+def is_dirty(cwd: Optional[str] = None, *, include_untracked: bool = False) -> bool:
+    """True if the working tree has uncommitted changes to *tracked* files.
+
+    Untracked files are ignored by default: a fast-forward update cannot lose
+    them (git aborts the merge if an incoming file would clobber an untracked
+    one), and a deployed app legitimately carries local runtime artifacts (logs,
+    state, build leftovers). Pass ``include_untracked=True`` to also flag them.
+    """
+    args = ["status", "--porcelain"]
+    if not include_untracked:
+        args.append("--untracked-files=no")
+    res = _git(args, cwd=cwd)
     return bool(res["ok"] and res["out"])
 
 
